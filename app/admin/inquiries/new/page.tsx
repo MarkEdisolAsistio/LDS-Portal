@@ -7,6 +7,7 @@ import { createInquiryAdmin } from "../actions";
 
 const ERRORS: Record<string, string> = {
   invalid_contact: "Please enter a name and a valid email address.",
+  missing_contact_details: "Please enter a phone number and company or department.",
   invalid_category: "Please choose a module category.",
   invalid_quantity: "Quantity must be a whole number from 1 to 10000.",
   need_description: "Please describe the request (at least 10 characters).",
@@ -68,7 +69,7 @@ export default async function NewInquiry({
           </label>
         </fieldset>
 
-        <button className="rounded bg-slate-900 px-5 py-2 text-white hover:bg-slate-700">
+        <button className="rounded bg-[#0d5a89] px-5 py-2 text-white hover:bg-[#0b446a]">
           Create inquiry
         </button>
       </form>

@@ -1,6 +1,7 @@
-import Link from "next/link";
 import { getMe, can, NAV } from "@/lib/permissions";
+import { AdminPortalShell } from "@/components/admin-portal-shell";
 import { logout } from "@/app/login/actions";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export default async function AdminLayout({
   children,
@@ -19,7 +20,7 @@ export default async function AdminLayout({
           Admin to set up your access.
         </p>
         <form action={logout}>
-          <button className="rounded bg-slate-900 px-4 py-2 text-white">
+          <button className="rounded bg-[#0d5a89] px-4 py-2 text-white hover:bg-[#0b446a]">
             Sign out
           </button>
         </form>
@@ -28,34 +29,30 @@ export default async function AdminLayout({
   }
 
   const items = NAV.filter((n) => can(me, n.module, "view"));
+  let inboxUnread = 0;
+  let profilePictureUrl = "";
+  if (me.profilePicturePath) {
+    const { data } = await createAdminClient().storage.from("staff-profile-pictures").createSignedUrl(me.profilePicturePath, 3600);
+    profilePictureUrl = data?.signedUrl ?? "";
+  }
+  if (can(me, "inbox", "view")) {
+    const { count } = await createAdminClient()
+      .from("email_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "inbound")
+      .eq("is_read", false);
+    inboxUnread = count ?? 0;
+  }
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900">
-      <aside className="w-60 shrink-0 border-r border-slate-200 bg-white p-4">
-        <div className="mb-6">
-          <p className="text-lg font-semibold">LDS Portal</p>
-          <p className="text-sm text-slate-600">{me.fullName}</p>
-          <p className="text-xs text-slate-400">{me.roleName}</p>
-        </div>
-
-        <nav className="flex flex-col gap-1">
-          {items.map((n) => (
-            <Link
-              key={n.href}
-              href={n.href}
-              className="rounded px-3 py-2 text-sm hover:bg-slate-100"
-            >
-              {n.label}
-            </Link>
-          ))}
-        </nav>
-
-        <form action={logout} className="mt-6">
-          <button className="text-sm text-slate-500 underline">Sign out</button>
-        </form>
-      </aside>
-
-      <main className="flex-1 p-8">{children}</main>
-    </div>
+    <AdminPortalShell
+      items={items.map(({ href, label }) => ({ href, label }))}
+      fullName={me.fullName}
+      roleName={me.roleName}
+      profilePictureUrl={profilePictureUrl}
+      inboxUnread={inboxUnread}
+    >
+      {children}
+    </AdminPortalShell>
   );
 }

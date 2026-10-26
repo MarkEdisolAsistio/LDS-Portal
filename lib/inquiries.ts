@@ -15,6 +15,14 @@ export const CLIENT_TYPE_LABELS: Record<ClientType, string> = {
   external: "Outside the company",
 };
 
+export const INQUIRY_PRIORITIES = ["low", "mid", "high"] as const;
+export type InquiryPriority = (typeof INQUIRY_PRIORITIES)[number];
+export const INQUIRY_PRIORITY_LABELS: Record<InquiryPriority, string> = {
+  low: "Low",
+  mid: "Mid",
+  high: "High",
+};
+
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -48,9 +56,12 @@ export function parseInquiry(fd: FormData): ParseResult {
   const categoryId = Number(text(fd, "category_id", 10));
   const quantity = Number(text(fd, "quantity", 6) || "1");
   const productId = text(fd, "product_id", 40);
+  const phone = text(fd, "phone", 40);
+  const organization = text(fd, "organization", 160);
   const customSpec = text(fd, "custom_spec", 4000);
 
   if (!name || !EMAIL.test(email)) return { ok: false, code: "invalid_contact" };
+  if (!phone || !organization) return { ok: false, code: "missing_contact_details" };
   if (!CLIENT_TYPES.includes(clientType) || !KINDS.includes(kind)) {
     return { ok: false, code: "invalid" };
   }
@@ -61,7 +72,7 @@ export function parseInquiry(fd: FormData): ParseResult {
     return { ok: false, code: "invalid_quantity" };
   }
   if (productId && !UUID.test(productId)) return { ok: false, code: "invalid" };
-  if (!productId && customSpec.length < 10) {
+  if (customSpec.length < 10) {
     return { ok: false, code: "need_description" };
   }
 
@@ -70,9 +81,9 @@ export function parseInquiry(fd: FormData): ParseResult {
     data: {
       name,
       email,
-      phone: text(fd, "phone", 40),
+      phone,
       clientType,
-      organization: text(fd, "organization", 160),
+      organization,
       kind,
       categoryId,
       productId,
@@ -87,8 +98,12 @@ export function isStatus(value: string): value is Status {
   return (STATUSES as readonly string[]).includes(value);
 }
 
+export function isInquiryPriority(value: string): value is InquiryPriority {
+  return (INQUIRY_PRIORITIES as readonly string[]).includes(value);
+}
+
 // Finds the client by email (or creates one), then creates the inquiry.
-// The database gives it a ticket number such as LDS-2026-0001.
+// The database gives it a ticket number such as REQ_2026_0001 (request) or PO_2026_0001 (buy).
 export async function saveInquiry(
   sb: SupabaseClient,
   data: InquiryInput,

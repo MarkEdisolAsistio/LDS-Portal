@@ -10,6 +10,7 @@ export const MODULES = [
   "users",
   "reports",
   "audit",
+  "projects",
 ] as const;
 
 export type Module = (typeof MODULES)[number];
@@ -21,9 +22,10 @@ const ORDER: Record<Level, number> = { none: 0, view: 1, edit: 2, full: 3 };
 export const NAV: { module: Module; label: string; href: string }[] = [
   { module: "dashboard", label: "Dashboard", href: "/admin" },
   { module: "inquiries", label: "Inquiries and Tickets", href: "/admin/inquiries" },
+  { module: "projects", label: "Projects and Forms", href: "/admin/projects" },
   { module: "inbox", label: "Inbox", href: "/admin/inbox" },
   { module: "catalog", label: "Catalog", href: "/admin/catalog" },
-  { module: "news", label: "News", href: "/admin/news" },
+  { module: "news", label: "Contents", href: "/admin/news" },
   { module: "users", label: "Users and Roles", href: "/admin/users" },
   { module: "reports", label: "Reports and Export", href: "/admin/reports" },
   { module: "audit", label: "Audit Log", href: "/admin/audit" },
@@ -33,6 +35,7 @@ export type Me = {
   id: string;
   email: string;
   fullName: string;
+  profilePicturePath: string | null;
   roleName: string;
   isSuper: boolean;
   permissions: Partial<Record<Module, Level>>;
@@ -50,13 +53,14 @@ export const getMe = cache(async (): Promise<Me | null> => {
 
   const { data: profileData } = await supabase
     .from("profiles")
-    .select("full_name, is_active, role_id")
+    .select("full_name, is_active, role_id, profile_picture_path")
     .eq("id", user.id)
     .maybeSingle();
   const profile = profileData as unknown as {
     full_name: string;
     is_active: boolean;
     role_id: string;
+    profile_picture_path: string | null;
   } | null;
   if (!profile || !profile.is_active) return null;
 
@@ -82,6 +86,7 @@ export const getMe = cache(async (): Promise<Me | null> => {
     id: user.id,
     email: user.email ?? "",
     fullName: profile.full_name,
+    profilePicturePath: profile.profile_picture_path ?? null,
     roleName: role.name,
     isSuper: role.is_super,
     permissions,

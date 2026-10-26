@@ -35,23 +35,23 @@ export function InquiryFields({
       <fieldset className="grid gap-4 md:grid-cols-2">
         <legend className="mb-2 font-medium text-slate-900">About the client</legend>
         <label className="text-sm text-slate-700">
-          Full name *
+          Full name <span className="text-red-600">*</span>
           <input name="name" required maxLength={120} defaultValue={defaults.name} className={inputClass} />
         </label>
         <label className="text-sm text-slate-700">
-          Email *
+          Email <span className="text-red-600">*</span>
           <input name="email" type="email" required maxLength={200} defaultValue={defaults.email} className={inputClass} />
         </label>
         <label className="text-sm text-slate-700">
-          Phone
-          <input name="phone" maxLength={40} defaultValue={defaults.phone} className={inputClass} />
+          Phone <span className="text-red-600">*</span>
+          <input name="phone" required maxLength={40} defaultValue={defaults.phone} className={inputClass} />
         </label>
         <label className="text-sm text-slate-700">
-          Company or department
-          <input name="organization" maxLength={160} defaultValue={defaults.organization} className={inputClass} />
+          Company or department <span className="text-red-600">*</span>
+          <input name="organization" required maxLength={160} defaultValue={defaults.organization} className={inputClass} />
         </label>
         <label className="text-sm text-slate-700 md:col-span-2">
-          Where are you from? *
+          Where are you from? <span className="text-red-600">*</span>
           <select name="client_type" required defaultValue={defaults.client_type ?? "external"} className={inputClass}>
             {CLIENT_TYPES.map((t) => (
               <option key={t} value={t}>{CLIENT_TYPE_LABELS[t]}</option>
@@ -63,7 +63,7 @@ export function InquiryFields({
       <fieldset className="grid gap-4 md:grid-cols-2">
         <legend className="mb-2 font-medium text-slate-900">What do you need?</legend>
         <label className="text-sm text-slate-700">
-          Request type *
+          Request type <span className="text-red-600">*</span>
           <select name="kind" required defaultValue={defaults.kind ?? "buy"} className={inputClass}>
             {KINDS.map((k) => (
               <option key={k} value={k}>{KIND_LABELS[k]}</option>
@@ -71,7 +71,7 @@ export function InquiryFields({
           </select>
         </label>
         <label className="text-sm text-slate-700">
-          Module category *
+          Module category <span className="text-red-600">*</span>
           <select name="category_id" required defaultValue={defaults.category_id ?? ""} className={inputClass}>
             <option value="" disabled>Choose a category</option>
             {categories.map((c) => (
@@ -80,14 +80,16 @@ export function InquiryFields({
           </select>
         </label>
         <label className="text-sm text-slate-700">
-          Quantity *
+          Quantity <span className="text-red-600">*</span>
           <input name="quantity" type="number" min={1} max={10000} required defaultValue={defaults.quantity ?? "1"} className={inputClass} />
         </label>
         <label className="text-sm text-slate-700 md:col-span-2">
-          Describe what you want
+          Describe what you want <span className="text-red-600">*</span>
           <textarea
             name="custom_spec"
             rows={5}
+            required
+            minLength={10}
             maxLength={4000}
             defaultValue={defaults.custom_spec}
             placeholder="Which module, what it should do, any design or size requirements."

@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getMe, can, MODULES, type Level, type Module } from "@/lib/permissions";
+import { STAFF_POSITIONS } from "@/lib/staff";
+import { sendMail, siteUrl, staffWelcomeEmail } from "@/lib/mail";
 
 const BACK = "/admin/users";
 const LEVELS: Level[] = ["none", "view", "edit", "full"];
@@ -81,8 +83,9 @@ export async function createStaff(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const roleId = String(formData.get("role_id") ?? "");
+  const position = String(formData.get("position") ?? "");
 
-  if (!fullName || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !roleId) {
+  if (!fullName || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !roleId || !STAFF_POSITIONS.includes(position as (typeof STAFF_POSITIONS)[number])) {
     done("invalid");
   }
   if (password.length < 8) done("weak_password");
@@ -109,14 +112,35 @@ export async function createStaff(formData: FormData) {
 
   const { error: profileError } = await supabase
     .from("profiles")
-    .insert({ id: user.id, full_name: fullName, role_id: roleId });
+    .insert({ id: user.id, full_name: fullName, role_id: roleId, position });
   if (profileError) {
     console.error("profile insert failed:", profileError.message);
     await admin.auth.admin.deleteUser(user.id); // undo, so nothing is half-created
     done("error");
   }
 
-  await audit(me.id, "create_staff", "profile", user.id, { email, roleId });
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: { redirectTo: `${await siteUrl()}/auth/callback?next=/reset-password` },
+  });
+  const resetLink = linkData?.properties?.action_link;
+  if (linkError || !resetLink) {
+    console.error("generate reset link failed:", linkError?.message);
+    await audit(me.id, "create_staff", "profile", user.id, { email, roleId, position, welcomeEmail: "not_sent" });
+    revalidatePath(BACK);
+    done("created_email_failed");
+  }
+
+  const welcome = staffWelcomeEmail({ name: fullName, username: email, temporaryPassword: password, resetLink });
+  const mail = await sendMail({ to: email, ...welcome });
+  if (!mail.ok) {
+    await audit(me.id, "create_staff", "profile", user.id, { email, roleId, position, welcomeEmail: mail.reason });
+    revalidatePath(BACK);
+    done("created_email_failed");
+  }
+
+  await audit(me.id, "create_staff", "profile", user.id, { email, roleId, position, welcomeEmail: "sent" });
   revalidatePath(BACK);
   done("created");
 }
@@ -200,6 +224,52 @@ export async function setActive(formData: FormData) {
   await audit(me.id, active ? "activate_staff" : "deactivate_staff", "profile", userId);
   revalidatePath(BACK);
   done("saved");
+}
+
+// ---------- Delete an account for good ----------
+export async function deleteStaff(formData: FormData) {
+  const me = await requireManager();
+
+  const userId = String(formData.get("user_id") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) done("invalid");
+  if (userId === me.id) done("self_delete");
+
+  const supabase = await createClient();
+  const { data: target } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!target) done("invalid");
+
+  // Never leave the portal without an active Super Admin.
+  if ((await isActiveSuper(supabase, userId)) && (await otherActiveSupers(supabase, userId)) === 0) {
+    done("last_super");
+  }
+
+  // Remember who it was, for the audit log
+  const admin = createAdminClient();
+  const { data: authUser } = await admin.auth.admin.getUserById(userId);
+  const email = authUser?.user?.email ?? null;
+
+  // 1) Clear the "who did it" marks and remove the profile
+  const { error: profileError } = await admin.rpc("delete_staff_profile", { target: userId, actor: me.id });
+  if (profileError) {
+    console.error("delete_staff_profile failed:", profileError.message);
+    done("error");
+  }
+
+  // 2) Remove the login itself
+  const { error: authError } = await admin.auth.admin.deleteUser(userId);
+  if (authError) console.error("deleteUser failed:", authError.message);
+
+  await audit(me.id, "delete_staff", "profile", userId, {
+    name: (target as unknown as { full_name: string }).full_name,
+    email,
+  });
+  revalidatePath(BACK);
+  revalidatePath("/admin");
+  done("deleted");
 }
 
 // ---------- Set a new password for someone ----------

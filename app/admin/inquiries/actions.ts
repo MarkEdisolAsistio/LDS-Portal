@@ -9,6 +9,7 @@ import {
   CLIENT_TYPES,
   KINDS,
   UUID,
+  isInquiryPriority,
   isStatus,
   parseInquiry,
   saveInquiry,
@@ -33,33 +34,63 @@ async function requireEditor() {
 const field = (fd: FormData, key: string, max: number) =>
   String(fd.get(key) ?? "").trim().slice(0, max);
 
-// ---------- Status and owner ----------
+// ---------- Status, priority, and owner ----------
 export async function updateTicket(formData: FormData) {
   const me = await requireEditor();
 
   const id = field(formData, "id", 40);
   const status = field(formData, "status", 30);
+  const priority = field(formData, "priority", 10);
   const owner = field(formData, "owner_id", 40);
+  const dueDate = field(formData, "due_date", 10);
   const page = `${LIST}/${id}`;
 
-  if (!UUID.test(id) || !isStatus(status) || (owner && !UUID.test(owner))) {
+  if (
+    !UUID.test(id) ||
+    !isStatus(status) ||
+    !isInquiryPriority(priority) ||
+    (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) ||
+    (owner && !UUID.test(owner))
+  ) {
     done(LIST, "invalid");
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("inquiries")
-    .update({ status, owner_id: owner || null })
+    .update({ status, priority, owner_id: owner || null })
     .eq("id", id)
     .select("id")
     .maybeSingle();
   if (error || !data) {
     console.error("updateTicket failed:", error?.message);
-    done(page, "error");
+    const migrationRequired =
+      (error?.code === "42703" || error?.code === "PGRST204") &&
+      /\bpriority\b/i.test(error.message);
+    done(page, migrationRequired ? "priority_setup_required" : "error");
   }
 
-  await audit(me.id, "update_ticket", "inquiry", id, { status, owner });
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("inquiry_id", id)
+    .maybeSingle();
+  if (project) {
+    const { error: projectError } = await supabase
+      .from("projects")
+      .update({ due_date: dueDate || null })
+      .eq("id", (project as unknown as { id: string }).id);
+    if (projectError) {
+      console.error("updateTicket deadline failed:", projectError.message);
+      done(page, "error");
+    }
+  }
+
+  await audit(me.id, "update_ticket", "inquiry", id, { status, priority, owner, due_date: dueDate || null });
   revalidatePath(LIST);
+  revalidatePath(page);
+  revalidatePath("/admin/projects");
+  revalidatePath("/admin");
   done(page, "saved");
 }
 
@@ -176,4 +207,26 @@ export async function createInquiryAdmin(formData: FormData) {
   await audit(me.id, "create_inquiry", "inquiry", saved.id, { ticket: saved.ticketNo });
   revalidatePath(LIST);
   done(`${LIST}/${saved.id}`, "created");
+}
+
+// ---------- Delete a ticket (its project and forms are deleted with it) ----------
+export async function deleteTicket(formData: FormData) {
+  const me = await getMe();
+  if (!me || !can(me, "inquiries", "full")) done(LIST, "forbidden");
+
+  const id = field(formData, "id", 40);
+  if (!UUID.test(id)) done(LIST, "invalid");
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("inquiries").delete().eq("id", id);
+  if (error) {
+    console.error("deleteTicket failed:", error.message);
+    done(`${LIST}/${id}`, "error");
+  }
+
+  await audit(me.id, "delete_ticket", "inquiry", id);
+  revalidatePath(LIST);
+  revalidatePath("/admin/projects");
+  revalidatePath("/admin");
+  done(LIST, "deleted");
 }

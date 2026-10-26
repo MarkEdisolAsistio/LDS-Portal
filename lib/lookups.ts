@@ -30,12 +30,19 @@ export async function getStaff(): Promise<Staff[]> {
 
 export async function getProduct(
   id: string
-): Promise<{ id: string; title: string } | null> {
+): Promise<{ id: string; title: string; category_id: number; is_purchasable: boolean } | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("products")
-    .select("id, title")
+    .select("id, title, category_id, is_purchasable")
     .eq("id", id)
     .maybeSingle();
-  return (data as unknown as { id: string; title: string } | null) ?? null;
+  return (
+    (data as unknown as {
+      id: string;
+      title: string;
+      category_id: number;
+      is_purchasable: boolean;
+    } | null) ?? null
+  );
 }
